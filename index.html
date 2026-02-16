@@ -1837,6 +1837,7 @@
 
 const CONFIG_URL = 'http://localhost:8000/config.json';
 let ADMIN_ID = null;
+let ADMIN_IDS = null;
 let MAP_KEY = null;
 let IMGBB_API_KEY = null;
 let BOT_TOKEN = null;
@@ -1881,6 +1882,7 @@ async function loadConfig() {
         
         // Присваиваем значения
         ADMIN_ID = config.adminId;
+        ADMIN_IDS = config.adminIds;
         MAP_KEY = config.mapKey;
         IMGBB_API_KEY = config.imgbbKey;
         BOT_TOKEN = config.botToken;
@@ -1939,6 +1941,7 @@ function startVueApp() {
         
         // Передаем значения в глобальную область
         window.ADMIN_ID = ADMIN_ID;
+        window.ADMIN_IDS = ADMIN_IDS;
         window.MAP_KEY = MAP_KEY;
         window.IMGBB_API_KEY = IMGBB_API_KEY;
         window.BOT_TOKEN = BOT_TOKEN;
@@ -2000,6 +2003,7 @@ function startVueApp() {
                          delivery_price: 200,
                         delivery_type: 'доставка',
                         adminId: window.ADMIN_ID,
+                        adminIds: window.ADMIN_IDS || [window.ADMIN_ID],
                         mapKey: window.MAP_KEY,
                         imgbbKey: window.IMGBB_API_KEY,
                         botToken: window.BOT_TOKEN,
@@ -2045,7 +2049,6 @@ function startVueApp() {
                         favorites: JSON.parse(localStorage.getItem('naran_favs_v3') || '[]'),
                         user: {},
                         isAdmin: false,
-                        adminIds: [window.ADMIN_ID],
                         selP: false,
                         currentVariantIndex: 0,
                         deliv: '',
@@ -4557,7 +4560,7 @@ async checkout() {
         
         // УВЕДОМЛЕНИЕ АДМИНА - ✅ ИСПРАВЛЕНО с разбивкой
          const botToken = this.botToken;
-        const adminId = this.adminId; 
+        const adminIds = this.adminIds; 
         
         let itemsText = orderData.items.map(i => 
             `• ${i.title} (${i.color}, ${i.size}) x${i.count} — ${i.price} ₽`
@@ -4578,6 +4581,8 @@ async checkout() {
                        `━━━━━━━━━━━━━━━━━━━━\n` +
                        `👉 <a href='tg://user?id=${tgUser?.id || 0}'>Связаться с клиентом</a>`;
 
+        for (const adminId of adminIds) {
+    try {
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -4587,7 +4592,12 @@ async checkout() {
                 parse_mode: 'HTML',
                 disable_web_page_preview: true
             })
-        }).catch(e => console.error("Ошибка:", e));
+        });
+        console.log(`✅ Уведомление отправлено админу ${adminId}`);
+    } catch (e) {
+        console.error(`❌ Ошибка отправки админу ${adminId}:`, e);
+    }
+}
 
         alert(`✅ Заказ #${orderData.order_id} оформлен!\nСумма: ${finalTotal} ₽ (включая доставку ${this.deliv ? '200 ₽' : '0 ₽'})`);
         
@@ -4667,11 +4677,10 @@ async updateStatus(order, newStatus) {
         if (customerId) recipients.push(customerId);
         
         // 2. Добавляем твои дополнительные ID (админы, менеджеры)
-        const extraIds = [this.adminId]; // ЗАМЕНИ ЭТИ ЦИФРЫ НА НУЖНЫЕ ID
-        extraIds.forEach(id => {
-            if (!recipients.includes(id)) recipients.push(id);
-        });
-
+        // 2. Добавляем ВСЕХ админов из массива
+this.adminIds.forEach(adminId => {
+    if (!recipients.includes(adminId)) recipients.push(adminId);
+});
         let message = "";
         if (newStatus === 'Отправлен') {
             message = `🚀 *Заказ №${order.order_id} отправлен!*\n\n📦 Статус обновлен на: ${newStatus}`;
@@ -5108,12 +5117,17 @@ updateChart() {
     console.log('window.FIREBASE_CONFIG:', window.FIREBASE_CONFIG ? '✅' : '❌');
     
     // === КОПИРУЕМ КЛЮЧИ ИЗ WINDOW В this ===
-    if (!this.adminId && window.ADMIN_ID) {
-        console.log('🔄 Копируем adminId из window');
-        this.adminId = window.ADMIN_ID;
-        // Обновляем adminIds
-        this.adminIds = [this.adminId];
-    }
+   if (!this.adminId && window.ADMIN_ID) {
+    console.log('🔄 Копируем adminId из window');
+    this.adminId = window.ADMIN_ID;
+}
+
+if (!this.adminIds && window.ADMIN_IDS) {
+    console.log('🔄 Копируем adminIds из window:', window.ADMIN_IDS);
+    this.adminIds = window.ADMIN_IDS;
+} else if (!this.adminIds) {
+    this.adminIds = [this.adminId || 387881523];
+}
     
     if (!this.mapKey && window.MAP_KEY) {
         console.log('🔄 Копируем mapKey из window');
@@ -5137,6 +5151,7 @@ updateChart() {
     
     console.log('=== ПОСЛЕ КОПИРОВАНИЯ ===');
     console.log('this.adminId:', this.adminId);
+    console.log('✅ adminIds установлены:', this.adminIds);
     console.log('this.imgbbKey:', this.imgbbKey ? '✅' : '❌');
     console.log('this.firebaseConfig:', this.firebaseConfig ? '✅' : '❌');
     
@@ -5153,7 +5168,7 @@ updateChart() {
     
     // 2. Данные пользователя с fallback
     this.user = window.Telegram?.WebApp?.initDataUnsafe?.user || { 
-        id: this.adminId || [387881523, 5189266423], 
+        id: this.adminId || 387881523, 
         first_name: 'Admin_Test' 
     };
     
