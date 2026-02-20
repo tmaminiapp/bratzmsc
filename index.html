@@ -1144,7 +1144,7 @@
         </div>
     </div> 
     
-    <div v-if="isAdmin" class="admin-section">
+    <div v-if="isAdmin && user && !user.is_guest" class="admin-section">
         <h2 class="brand-name" style="font-size: 14px; margin-bottom: 20px;">АДМИН-ПАНЕЛЬ</h2>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 25px;">
@@ -2000,6 +2000,7 @@ function startVueApp() {
               const appVm = Vue.createApp({
                 data() {
                     return {
+                        editImages: [],
                          delivery_price: 200,
                         delivery_type: 'доставка',
                         adminId: window.ADMIN_ID,
@@ -3209,9 +3210,9 @@ async handleEditFiles(e) {
     if (!this.editNewFiles) this.editNewFiles = [];
     
     // Проверка лимита
-    const totalImages = this.countTotalImages();
-    if (totalImages + files.length > this.MAX_TOTAL_IMAGES) {
-        alert(`Максимум ${this.MAX_TOTAL_IMAGES} изображений. Сейчас: ${totalImages}`);
+     const totalImages = this.countTotalImages();
+    if (totalImages + files.length > this.IMAGE_LIMITS.MAX_TOTAL_IMAGES) {
+        alert(`Максимум ${this.IMAGE_LIMITS.MAX_TOTAL_IMAGES} изображений. Сейчас: ${totalImages}`);
         return;
     }
     
@@ -3756,9 +3757,12 @@ selectFirstAvailableSize(variant) {
     this.selP.tempSize = size || null;
 },
 removePhoto(index) {
-    // Освобождаем память браузера
-    URL.revokeObjectURL(this.newP.localFiles[index].preview);
-    this.newP.localFiles.splice(index, 1);
+    if (this.newP.localFiles && this.newP.localFiles[index]) {
+        if (this.newP.localFiles[index].preview) {
+            URL.revokeObjectURL(this.newP.localFiles[index].preview);
+        }
+        this.newP.localFiles.splice(index, 1);
+    }
 },
 quickAddToCart(p) {
     if (!p) return;
@@ -5117,37 +5121,31 @@ updateChart() {
     console.log('window.FIREBASE_CONFIG:', window.FIREBASE_CONFIG ? '✅' : '❌');
     
     // === КОПИРУЕМ КЛЮЧИ ИЗ WINDOW В this ===
-   if (!this.adminId && window.ADMIN_ID) {
-    console.log('🔄 Копируем adminId из window');
-    this.adminId = window.ADMIN_ID;
+     // === КОПИРУЕМ КЛЮЧИ ИЗ WINDOW В this ===
+if (!this.adminId && window.ADMIN_ID) {
+    console.log('🔄 Копируем adminId из window:', window.ADMIN_ID);
+    this.adminId = window.ADMIN_ID;  // Просто число, НЕ МАССИВ!
 }
 
-if (!this.adminIds && window.ADMIN_IDS) {
-    console.log('🔄 Копируем adminIds из window:', window.ADMIN_IDS);
-    this.adminIds = window.ADMIN_IDS;
-} else if (!this.adminIds) {
-    this.adminIds = [this.adminId || 387881523];
+if (!this.mapKey && window.MAP_KEY) {
+    console.log('🔄 Копируем mapKey из window');
+    this.mapKey = window.MAP_KEY;
 }
-    
-    if (!this.mapKey && window.MAP_KEY) {
-        console.log('🔄 Копируем mapKey из window');
-        this.mapKey = window.MAP_KEY;
-    }
-    
-    if (!this.imgbbKey && window.IMGBB_API_KEY) {
-        console.log('🔄 Копируем imgbbKey из window');
-        this.imgbbKey = window.IMGBB_API_KEY;
-    }
-    
-    if (!this.botToken && window.BOT_TOKEN) {
-        console.log('🔄 Копируем botToken из window');
-        this.botToken = window.BOT_TOKEN;
-    }
-    
-    if (!this.firebaseConfig && window.FIREBASE_CONFIG) {
-        console.log('🔄 Копируем firebaseConfig из window');
-        this.firebaseConfig = window.FIREBASE_CONFIG;
-    }
+
+if (!this.imgbbKey && window.IMGBB_API_KEY) {
+    console.log('🔄 Копируем imgbbKey из window');
+    this.imgbbKey = window.IMGBB_API_KEY;
+}
+
+if (!this.botToken && window.BOT_TOKEN) {
+    console.log('🔄 Копируем botToken из window');
+    this.botToken = window.BOT_TOKEN;
+}
+
+if (!this.firebaseConfig && window.FIREBASE_CONFIG) {
+    console.log('🔄 Копируем firebaseConfig из window');
+    this.firebaseConfig = window.FIREBASE_CONFIG;
+}
     
     console.log('=== ПОСЛЕ КОПИРОВАНИЯ ===');
     console.log('this.adminId:', this.adminId);
@@ -5166,17 +5164,30 @@ if (!this.adminIds && window.ADMIN_IDS) {
         }
     }
     
-    // 2. Данные пользователя с fallback
-    this.user = window.Telegram?.WebApp?.initDataUnsafe?.user || { 
-        id: this.adminId || 387881523, 
-        first_name: 'Admin_Test' 
+  // 2. Данные пользователя с fallback
+// Получаем данные пользователя из Telegram
+this.user = window.Telegram?.WebApp?.initDataUnsafe?.user;
+
+if (!this.user) {
+    console.log('⚠️ Приложение открыто вне Telegram');
+    this.user = { 
+        id: null, 
+        first_name: 'Гость',
+        is_guest: true 
     };
-    
-    console.log('User:', this.user);
-    
-    // 3. Проверка админа
-    this.isAdmin = this.adminIds.includes(Number(this.user.id));
-    console.log('Is admin:', this.isAdmin);
+    this.isAdmin = false;
+} else {
+    // Проверка админа только для реальных пользователей Telegram
+    this.isAdmin = (Number(this.user.id) === Number(this.adminId));
+}
+
+console.log('User:', this.user);
+console.log('Is admin:', this.isAdmin);
+console.log('Admin ID:', this.adminId);
+console.log('User ID:', this.user.id);
+
+// УДАЛИТЕ ВЕСЬ СТАРЫЙ БЛОК С 3. Проверка админа
+// (все что после этого до комментария "4. Восстановление из localStorage")
     
     // 4. Восстановление из localStorage
     const savedAddr = localStorage.getItem('naran_last_addr');
@@ -5191,212 +5202,117 @@ if (!this.adminIds && window.ADMIN_IDS) {
     let firebaseInitAttempts = 0;
     const MAX_ATTEMPTS = 10;
 
-    const initFirebaseData = () => {
-        if (firebaseInitAttempts >= MAX_ATTEMPTS) {
-            console.error("❌ Failed to initialize Firebase after", MAX_ATTEMPTS, "attempts");
-            
-            // Проверяем, есть ли Firebase конфигурация
-            if (!this.firebaseConfig && !window.FIREBASE_CONFIG) {
-                console.error('❌ Firebase конфигурация отсутствует!');
-                console.log('🔄 Загружаем тестовые данные для браузера');
-                
-                // Тестовые категории
-                this.categories = [
-                    { id: 'cat1', name: 'ПЛАТЬЯ' },
-                    { id: 'cat2', name: 'КОСТЮМЫ' },
-                    { id: 'cat3', name: 'ВЕРХНЯЯ ОДЕЖДА' },
-                    { id: 'cat4', name: 'БРЮКИ' },
-                    { id: 'cat5', name: 'АКСЕССУАРЫ' }
-                ];
-                
-                // Тестовые товары
-                this.products = [
-                    { 
-                        id: 'test1', 
-                        title: 'ПЛАТЬЕ ЧЕРНОЕ', 
-                        price: 3500, 
-                        oldPrice: 4500,
-                        category: 'ПЛАТЬЯ',
-                        isNew: true,
-                        variants: [
-                            { 
-                                color: 'Черный', 
-                                images: ['https://images.unsplash.com/photo-1539008835657-9e8e9680c956?w=400&h=600&fit=crop'],
-                                stocks: { 'XS': 3, 'S': 5, 'M': 2, 'L': 1 }
-                            }
-                        ]
-                    },
-                    { 
-                        id: 'test2', 
-                        title: 'КОСТЮМ БЕЖЕВЫЙ', 
-                        price: 5500,
-                        category: 'КОСТЮМЫ',
-                        variants: [
-                            { 
-                                color: 'Бежевый', 
-                                images: ['https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400&h=600&fit=crop'],
-                                stocks: { 'S': 4, 'M': 3, 'L': 2 }
-                            }
-                        ]
-                    },
-                    { 
-                        id: 'test3', 
-                        title: 'ПАЛЬТО ШЕРСТЬ', 
-                        price: 8900,
-                        category: 'ВЕРХНЯЯ ОДЕЖДА',
-                        variants: [
-                            { 
-                                color: 'Серый', 
-                                images: ['https://images.unsplash.com/photo-1539533018447-63fcce2678e3?w=400&h=600&fit=crop'],
-                                stocks: { 'M': 2, 'L': 1, 'XL': 1 }
-                            }
-                        ]
-                    }
-                ];
-                
-                // Тестовые заказы
-                this.allOrders = [
-                    {
-                        id: 'order1',
-                        order_id: '1402-1234',
-                        customer_name: 'Анна Петрова',
-                        customer_phone: '+7 (999) 123-45-67',
-                        address: 'г. Москва, ул. Тверская, д. 1',
-                        order_total: 9000,
-                        status: 'Доставлен',
-                        items: [
-                            { title: 'ПЛАТЬЕ ЧЕРНОЕ', color: 'Черный', size: 'M', count: 1, price: 3500 },
-                            { title: 'КОСТЮМ БЕЖЕВЫЙ', color: 'Бежевый', size: 'S', count: 1, price: 5500 }
-                        ],
-                        createdAt: new Date()
-                    }
-                ];
-                
-                console.log('✅ Тестовые данные загружены');
-                console.log('Категории:', this.categories.length);
-                console.log('Товары:', this.products.length);
-                
-                // Для теста делаем админом
-                if (this.user.id === undefined) {
-                    this.isAdmin = true;
-                    this.user = { id: 387881523, first_name: 'Admin' };
-                }
-            }
-            
-            return;
-        }
+  const initFirebaseData = () => {
+    if (firebaseInitAttempts >= MAX_ATTEMPTS) {
+        console.error("❌ Failed to initialize Firebase after", MAX_ATTEMPTS, "attempts");
+        return;
+    }
+    
+    firebaseInitAttempts++;
+    
+    // Проверяем наличие Firebase объектов
+    if (!window.fb || !window.db) {
+        console.log("⏳ Firebase еще не инициализирован, попытка", firebaseInitAttempts);
+        setTimeout(initFirebaseData, 500);
+        return;
+    }
+    
+    if (window.fb && window.fb.onSnapshot) {
+        console.log("✅ Firebase initialized, attempt", firebaseInitAttempts);
         
-        firebaseInitAttempts++;
+        // Сохраняем функции отписки для очистки
+        this.unsubscribers = [];
         
-        // Проверяем наличие Firebase объектов
-        if (!window.fb || !window.db) {
-            console.log("⏳ Firebase еще не инициализирован, попытка", firebaseInitAttempts);
-            
-            // Проверяем, есть ли конфигурация
-            if (this.firebaseConfig || window.FIREBASE_CONFIG) {
-                console.log('Firebase конфигурация есть, но объекты не созданы');
-            }
-            
-            setTimeout(initFirebaseData, 500);
-            return;
-        }
-        
-        if (window.fb && window.fb.onSnapshot) {
-            console.log("✅ Firebase initialized, attempt", firebaseInitAttempts);
-            
-            // Сохраняем функции отписки для очистки
-            this.unsubscribers = [];
-            
-            // 5.1. Товары
-            try {
-                const unsubProducts = window.fb.onSnapshot(
-                    window.fb.query(
-                        window.fb.collection(window.db, "products"), 
-                        window.fb.orderBy("createdAt", "desc")
-                    ), 
-                    snap => {
-                        this.products = snap.docs.map(doc => ({ 
-                            id: doc.id, 
-                            ...doc.data(), 
-                            aIdx: 0 
-                        }));
-                        console.log('✅ Products loaded:', this.products.length);
-                        
-                        this.$nextTick(() => {
-                            if (this.tab === 'profile') {
-                                this.calculateListHeight();
-                            }
-                        });
-                    },
-                    err => console.error("❌ Products error:", err)
-                );
-                this.unsubscribers.push(unsubProducts);
-            } catch (e) {
-                console.error("Error setting up products listener:", e);
-            }
-            
-            // 5.2. Категории
-            try {
-                const unsubCategories = window.fb.onSnapshot(
-                    window.fb.collection(window.db, "categories"), 
-                    snap => {
-                        this.categories = snap.docs.map(doc => ({ 
-                            id: doc.id, 
-                            ...doc.data() 
-                        }));
-                        console.log('✅ Categories loaded:', this.categories.length);
-                    },
-                    err => console.error("❌ Categories error:", err)
-                );
-                this.unsubscribers.push(unsubCategories);
-            } catch (e) {
-                console.error("Error setting up categories listener:", e);
-            }
-            
-            // 5.3. ЗАКАЗЫ
-            try {
-                const unsubOrders = window.fb.onSnapshot(
-                    window.fb.query(
-                        window.fb.collection(window.db, "orders"),
-                        window.fb.orderBy("createdAt", "desc")
-                    ),
-                    snap => {
-                        this.allOrders = snap.docs.map(doc => {
-                            const data = doc.data();
-                            return {
-                                id: doc.id,
-                                ...data,
-                                displayDate: data.createdAt?.toDate 
-                                    ? data.createdAt.toDate().toLocaleDateString('ru-RU')
-                                    : new Date().toLocaleDateString('ru-RU')
-                            };
-                        });
-                        console.log('✅ Orders loaded:', this.allOrders.length);
-                        
-                        if (this.tab === 'profile' && this.isAdmin) {
-                            this.$nextTick(() => {
-                                setTimeout(() => {
-                                    console.log('Auto-updating chart after orders load...');
-                                    this.updateChart();
-                                }, 800);
-                            });
+        // 5.1. Товары
+        try {
+            const unsubProducts = window.fb.onSnapshot(
+                window.fb.query(
+                    window.fb.collection(window.db, "products"), 
+                    window.fb.orderBy("createdAt", "desc")
+                ), 
+                snap => {
+                    this.products = snap.docs.map(doc => ({ 
+                        id: doc.id, 
+                        ...doc.data(), 
+                        aIdx: 0 
+                    }));
+                    console.log('✅ Products loaded:', this.products.length);
+                    
+                    this.$nextTick(() => {
+                        if (this.tab === 'profile') {
+                            this.calculateListHeight();
                         }
-                    },
-                    err => {
-                        console.error("❌ Orders error:", err);
-                        this.allOrders = [];
-                    }
-                );
-                this.unsubscribers.push(unsubOrders);
-            } catch (e) {
-                console.error("Error setting up orders listener:", e);
-            }
-            
-        } else {
-            console.log("⏳ Waiting for Firebase... attempt", firebaseInitAttempts);
-            setTimeout(initFirebaseData, 500);
+                    });
+                },
+                err => console.error("❌ Products error:", err)
+            );
+            this.unsubscribers.push(unsubProducts);
+        } catch (e) {
+            console.error("Error setting up products listener:", e);
         }
-    };
+        
+        // 5.2. Категории
+        try {
+            const unsubCategories = window.fb.onSnapshot(
+                window.fb.collection(window.db, "categories"), 
+                snap => {
+                    this.categories = snap.docs.map(doc => ({ 
+                        id: doc.id, 
+                        ...doc.data() 
+                    }));
+                    console.log('✅ Categories loaded:', this.categories.length);
+                },
+                err => console.error("❌ Categories error:", err)
+            );
+            this.unsubscribers.push(unsubCategories);
+        } catch (e) {
+            console.error("Error setting up categories listener:", e);
+        }
+        
+        // 5.3. ЗАКАЗЫ
+        try {
+            const unsubOrders = window.fb.onSnapshot(
+                window.fb.query(
+                    window.fb.collection(window.db, "orders"),
+                    window.fb.orderBy("createdAt", "desc")
+                ),
+                snap => {
+                    this.allOrders = snap.docs.map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            displayDate: data.createdAt?.toDate 
+                                ? data.createdAt.toDate().toLocaleDateString('ru-RU')
+                                : new Date().toLocaleDateString('ru-RU')
+                        };
+                    });
+                    console.log('✅ Orders loaded:', this.allOrders.length);
+                    
+                    if (this.tab === 'profile' && this.isAdmin) {
+                        this.$nextTick(() => {
+                            setTimeout(() => {
+                                console.log('Auto-updating chart after orders load...');
+                                this.updateChart();
+                            }, 800);
+                        });
+                    }
+                },
+                err => {
+                    console.error("❌ Orders error:", err);
+                    this.allOrders = [];
+                }
+            );
+            this.unsubscribers.push(unsubOrders);
+        } catch (e) {
+            console.error("Error setting up orders listener:", e);
+        }
+        
+    } else {
+        console.log("⏳ Waiting for Firebase... attempt", firebaseInitAttempts);
+        setTimeout(initFirebaseData, 500);
+    }
+};
 
     // Запускаем инициализацию Firebase
     console.log('🚀 Запуск инициализации Firebase...');
